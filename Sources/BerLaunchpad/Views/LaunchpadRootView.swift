@@ -15,8 +15,12 @@ struct LaunchpadRootView: View {
     var body: some View {
         GeometryReader { geo in
             let screenSize = geo.size
-            let topBarInset = max(46, screenSize.height * 0.055)
-            let bottomInset = max(44, screenSize.height * 0.05)
+            let hasRecent = store.settings.showRecentApps && !store.recentApps.isEmpty
+            let layout = LaunchpadLayoutMetrics.compute(
+                screenSize: screenSize,
+                settings: store.settings,
+                hasRecentApps: hasRecent
+            )
 
             ZStack {
                 // Fullscreen Sequoia Frosted Wallpaper Blur
@@ -34,23 +38,24 @@ struct LaunchpadRootView: View {
                 VStack(spacing: 0) {
                     // Top Bar: Centered Search + Right Controls
                     topBar(screenWidth: screenSize.width)
-                        .padding(.top, topBarInset)
-                        .padding(.bottom, 14)
+                        .frame(height: 30)
+                        .padding(.top, layout.topBarInset)
+                        .padding(.bottom, 6)
 
                     // Center Area: Search Results or Recent Apps + Paged App Grid
                     ZStack {
                         if !store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            searchResultsView(screenSize: screenSize)
+                            searchResultsView(screenSize: screenSize, layout: layout)
                                 .transition(.opacity)
                         } else {
                             VStack(spacing: 0) {
-                                if store.settings.showRecentApps && !store.recentApps.isEmpty {
-                                    recentAppsSection(screenWidth: screenSize.width)
+                                if hasRecent {
+                                    recentAppsSection(layout: layout)
                                         .transition(.opacity)
                                 }
 
                                 GeometryReader { gridGeo in
-                                    pagedGridView(availableSize: gridGeo.size)
+                                    pagedGridView(availableSize: gridGeo.size, layout: layout)
                                 }
                             }
                             .transition(.opacity)
@@ -98,11 +103,12 @@ struct LaunchpadRootView: View {
                                     store.selectedIndex = nil
                                 }
                             )
+                            .frame(height: 22)
                         } else {
-                            Color.clear.frame(height: 26)
+                            Color.clear.frame(height: 22)
                         }
                     }
-                    .padding(.bottom, bottomInset)
+                    .padding(.bottom, layout.bottomInset)
                 }
                 .blur(radius: store.openedFolderID != nil ? 12 : 0)
                 .scaleEffect(store.openedFolderID != nil ? 0.97 : 1.0)
@@ -110,9 +116,14 @@ struct LaunchpadRootView: View {
 
                 // Expanded Folder Overlay
                 if let folder = store.openedFolder {
-                    ExpandedFolderOverlayView(store: store, folder: folder, screenSize: screenSize)
-                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                        .zIndex(10)
+                    ExpandedFolderOverlayView(
+                        store: store,
+                        folder: folder,
+                        screenSize: screenSize,
+                        effectiveIconSize: layout.effectiveIconSize
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                    .zIndex(10)
                 }
 
                 // Settings Modal Overlay
@@ -216,45 +227,26 @@ struct LaunchpadRootView: View {
         }
     }
 
-    // MARK: - Grid Metrics & Recent Apps Row
-
-    private struct GridMetrics {
-        let gridWidth: CGFloat
-        let cols: Int
-        let colSpacing: CGFloat
-        let tileWidth: CGFloat
-    }
-
-    private func gridMetrics(for width: CGFloat) -> GridMetrics {
-        let horizontalPadding = max(72, width * 0.085)
-        let gridWidth = max(320, width - horizontalPadding * 2)
-        let cols = store.settings.columns
-        let colSpacing = max(
-            12,
-            min(32, (gridWidth - CGFloat(cols) * CGFloat(store.settings.iconSize + 28)) / CGFloat(max(1, cols - 1)))
-        )
-        let tileWidth = max(92, (gridWidth - colSpacing * CGFloat(cols - 1)) / CGFloat(cols))
-        return GridMetrics(gridWidth: gridWidth, cols: cols, colSpacing: colSpacing, tileWidth: tileWidth)
-    }
+    // MARK: - Recent Apps Row
 
     @ViewBuilder
-    private func recentAppsSection(screenWidth: CGFloat) -> some View {
-        let metrics = gridMetrics(for: screenWidth)
-        let recentSlice = Array(store.recentApps.prefix(metrics.cols))
-        let gridColumns = Array(repeating: GridItem(.fixed(metrics.tileWidth), spacing: metrics.colSpacing), count: metrics.cols)
+    private func recentAppsSection(layout: LaunchpadLayoutMetrics) -> some View {
+        let recentSlice = Array(store.recentApps.prefix(layout.columns))
+        let gridColumns = Array(repeating: GridItem(.fixed(layout.tileWidth), spacing: layout.colSpacing), count: layout.columns)
 
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: LaunchpadLayoutMetrics.recentTileSpacing) {
             Text("Recent app")
                 .font(.system(size: 13.5, weight: .semibold))
                 .foregroundColor(.white.opacity(0.88))
                 .shadow(color: .black.opacity(0.55), radius: 2, y: 1)
+                .frame(height: LaunchpadLayoutMetrics.recentHeaderHeight, alignment: .leading)
                 .padding(.leading, 6)
 
             LazyVGrid(columns: gridColumns, spacing: 0) {
                 ForEach(recentSlice) { app in
                     AppIconTileView(
                         app: app,
-                        iconSize: store.settings.iconSize,
+                        iconSize: layout.effectiveIconSize,
                         isJiggleMode: false,
                         isSelected: false,
                         isDropTarget: false,
@@ -267,61 +259,56 @@ struct LaunchpadRootView: View {
                     )
                 }
             }
-            .frame(width: metrics.gridWidth, alignment: .leading)
+            .frame(width: layout.gridWidth, alignment: .leading)
 
             Rectangle()
                 .fill(Color.white.opacity(0.28))
-                .frame(width: metrics.gridWidth, height: 1)
-                .padding(.top, 10)
-                .padding(.bottom, 8)
+                .frame(width: layout.gridWidth, height: 1)
+                .padding(.top, 3)
+                .padding(.bottom, 3)
         }
-        .frame(width: metrics.gridWidth, alignment: .leading)
-        .padding(.top, 4)
+        .frame(width: layout.gridWidth, alignment: .leading)
+        .padding(.top, LaunchpadLayoutMetrics.recentTopPadding)
     }
 
     // MARK: - Paged App Grid
 
     @ViewBuilder
-    private func pagedGridView(availableSize: CGSize) -> some View {
-        let metrics = gridMetrics(for: availableSize.width)
-        let gridWidth = metrics.gridWidth
-        let cols = metrics.cols
-        let rows = store.settings.rows
-        let colSpacing = metrics.colSpacing
-        let tileWidth = metrics.tileWidth
-        let rowSpacing = max(12, min(32, (availableSize.height - CGFloat(rows) * CGFloat(store.settings.iconSize + 52)) / CGFloat(max(1, rows))))
-
+    private func pagedGridView(availableSize: CGSize, layout: LaunchpadLayoutMetrics) -> some View {
+        let gridWidth = layout.gridWidth
+        let cols = layout.columns
+        let colSpacing = layout.colSpacing
+        let tileWidth = layout.tileWidth
+        let rowSpacing = layout.rowSpacing
         let pageWidth = availableSize.width
 
         HStack(spacing: 0) {
             ForEach(Array(store.pages.enumerated()), id: \.offset) { pageIndex, entries in
                 let gridColumns = Array(repeating: GridItem(.fixed(tileWidth), spacing: colSpacing), count: cols)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack {
-                        LazyVGrid(columns: gridColumns, spacing: rowSpacing) {
-                            ForEach(Array(entries.enumerated()), id: \.element.id) { itemIndex, entry in
-                                gridTile(
-                                    entry: entry,
-                                    pageIndex: pageIndex,
-                                    itemIndex: itemIndex,
-                                    tileWidth: tileWidth
-                                )
-                            }
+                VStack(spacing: 0) {
+                    LazyVGrid(columns: gridColumns, spacing: rowSpacing) {
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { itemIndex, entry in
+                            gridTile(
+                                entry: entry,
+                                pageIndex: pageIndex,
+                                itemIndex: itemIndex,
+                                tileWidth: tileWidth,
+                                iconSize: layout.effectiveIconSize
+                            )
                         }
-                        .frame(width: gridWidth, alignment: .top)
-                        Spacer(minLength: 0)
                     }
-                    .padding(.top, 10)
-                    .padding(.bottom, 16)
-                    .frame(width: pageWidth)
-                    .frame(minHeight: availableSize.height, alignment: .top)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        handleBackgroundTap()
-                    }
+                    .frame(width: gridWidth, alignment: .top)
+                    Spacer(minLength: 0)
                 }
+                .padding(.top, LaunchpadLayoutMetrics.gridTopPadding)
+                .padding(.bottom, LaunchpadLayoutMetrics.gridBottomPadding)
                 .frame(width: pageWidth, height: availableSize.height, alignment: .top)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    handleBackgroundTap()
+                }
+                .onDrop(of: [.text], delegate: BackgroundFallbackDropDelegate(store: store))
             }
         }
         .frame(width: pageWidth, height: availableSize.height, alignment: .leading)
@@ -340,7 +327,13 @@ struct LaunchpadRootView: View {
     }
 
     @ViewBuilder
-    private func gridTile(entry: GridEntry, pageIndex: Int, itemIndex: Int, tileWidth: CGFloat) -> some View {
+    private func gridTile(
+        entry: GridEntry,
+        pageIndex: Int,
+        itemIndex: Int,
+        tileWidth: CGFloat,
+        iconSize: Double
+    ) -> some View {
         let isSelected = (pageIndex == store.currentPage && store.selectedIndex == itemIndex)
         let isDropTarget = (store.dropTargetEntryID == entry.id)
 
@@ -349,7 +342,7 @@ struct LaunchpadRootView: View {
             case .app(let app):
                 AppIconTileView(
                     app: app,
-                    iconSize: store.settings.iconSize,
+                    iconSize: iconSize,
                     isJiggleMode: store.isJiggleMode,
                     isSelected: isSelected,
                     isDropTarget: isDropTarget,
@@ -369,7 +362,7 @@ struct LaunchpadRootView: View {
             case .folder(let folder):
                 FolderIconTileView(
                     folder: folder,
-                    iconSize: store.settings.iconSize,
+                    iconSize: iconSize,
                     isJiggleMode: store.isJiggleMode,
                     isSelected: isSelected,
                     isDropTarget: isDropTarget,
@@ -400,7 +393,7 @@ struct LaunchpadRootView: View {
                 targetPage: pageIndex,
                 targetIndex: itemIndex,
                 tileWidth: tileWidth,
-                iconSize: store.settings.iconSize,
+                iconSize: iconSize,
                 store: store
             )
         )
@@ -409,11 +402,10 @@ struct LaunchpadRootView: View {
     // MARK: - Search Results Grid
 
     @ViewBuilder
-    private func searchResultsView(screenSize: CGSize) -> some View {
+    private func searchResultsView(screenSize: CGSize, layout: LaunchpadLayoutMetrics) -> some View {
         let matches = store.filteredApps
-        let metrics = gridMetrics(for: screenSize.width)
-        let gridWidth = metrics.gridWidth
-        let gridColumns = Array(repeating: GridItem(.fixed(metrics.tileWidth), spacing: metrics.colSpacing), count: metrics.cols)
+        let gridWidth = layout.gridWidth
+        let gridColumns = Array(repeating: GridItem(.fixed(layout.tileWidth), spacing: layout.colSpacing), count: layout.columns)
 
         if matches.isEmpty {
             VStack {
@@ -434,7 +426,7 @@ struct LaunchpadRootView: View {
                     ForEach(Array(matches.enumerated()), id: \.element.id) { index, app in
                         AppIconTileView(
                             app: app,
-                            iconSize: store.settings.iconSize,
+                            iconSize: layout.effectiveIconSize,
                             isJiggleMode: false,
                             isSelected: store.selectedIndex == index,
                             isDropTarget: false,

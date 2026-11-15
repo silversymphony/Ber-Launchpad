@@ -6,6 +6,10 @@ import Foundation
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static func main() {
+        if CommandLine.arguments.contains("--run-tests") {
+            let code = ScenarioTester.runAll()
+            exit(code)
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate

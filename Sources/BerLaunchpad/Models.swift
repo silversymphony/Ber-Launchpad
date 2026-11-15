@@ -1,4 +1,5 @@
 import Carbon
+import CoreGraphics
 import Foundation
 
 enum AppCategory: String, Codable, CaseIterable, Hashable {
@@ -314,6 +315,125 @@ struct AppSettings: Codable, Equatable {
             replaceF4LaunchpadKey: replaceF4LaunchpadKey,
             showRecentApps: showRecentApps,
             recentAppPaths: recentAppPaths
+        )
+    }
+}
+
+struct LaunchpadLayoutMetrics: Equatable {
+    static let tileSpacing: CGFloat = 4
+    static let tileLabelHeight: CGFloat = 28
+    static let tileVerticalPadding: CGFloat = 4
+    static let tileHorizontalPadding: CGFloat = 8
+    static let tileFixedExtraHeight: CGFloat = tileSpacing + tileLabelHeight + tileVerticalPadding // 36pt
+
+    static let recentTopPadding: CGFloat = 2
+    static let recentHeaderHeight: CGFloat = 16
+    static let recentTileSpacing: CGFloat = 4
+    static let recentDividerBlockHeight: CGFloat = 7
+    static let recentChromeHeight: CGFloat = recentTopPadding + recentHeaderHeight + (recentTileSpacing * 2) + recentDividerBlockHeight // 33pt
+
+    static let gridTopPadding: CGFloat = 4
+    static let gridBottomPadding: CGFloat = 6
+    static let gridVerticalPadding: CGFloat = gridTopPadding + gridBottomPadding // 10pt
+
+    let screenSize: CGSize
+    let topBarInset: CGFloat
+    let topBarTotalHeight: CGFloat
+    let bottomInset: CGFloat
+    let bottomBarTotalHeight: CGFloat
+    let centerSize: CGSize
+    let effectiveIconSize: Double
+    let tileWidth: CGFloat
+    let tileHeight: CGFloat
+    let colSpacing: CGFloat
+    let rowSpacing: CGFloat
+    let gridWidth: CGFloat
+    let recentSectionHeight: CGFloat
+    let availableGridHeight: CGFloat
+    let rows: Int
+    let columns: Int
+
+    var totalGridContentHeight: CGFloat {
+        LaunchpadLayoutMetrics.gridTopPadding
+            + CGFloat(rows) * tileHeight
+            + CGFloat(max(0, rows - 1)) * rowSpacing
+            + LaunchpadLayoutMetrics.gridBottomPadding
+    }
+
+    var totalGridContentWidth: CGFloat {
+        CGFloat(columns) * tileWidth + CGFloat(max(0, columns - 1)) * colSpacing
+    }
+
+    var fitsWithoutClipping: Bool {
+        let minTileWidthNeeded = CGFloat(effectiveIconSize) * 1.14 + LaunchpadLayoutMetrics.tileHorizontalPadding
+        return totalGridContentHeight <= availableGridHeight + 0.5
+            && totalGridContentWidth <= gridWidth + 0.5
+            && tileWidth + 0.5 >= minTileWidthNeeded
+    }
+
+    static func compute(screenSize: CGSize, settings: AppSettings, hasRecentApps: Bool) -> LaunchpadLayoutMetrics {
+        let topBarInset = max(18, screenSize.height * 0.018)
+        let topBarHeight: CGFloat = 30
+        let topBarBottomPadding: CGFloat = 6
+        let topBarTotalHeight = topBarInset + topBarHeight + topBarBottomPadding
+
+        let bottomBarHeight: CGFloat = 22
+        let bottomInset = max(12, screenSize.height * 0.014)
+        let bottomBarTotalHeight = bottomBarHeight + bottomInset
+
+        let centerWidth = max(320, screenSize.width)
+        let centerHeight = max(200, screenSize.height - topBarTotalHeight - bottomBarTotalHeight)
+        let centerSize = CGSize(width: centerWidth, height: centerHeight)
+
+        let horizontalPadding = max(48, centerWidth * 0.055)
+        let gridWidth = max(320, centerWidth - horizontalPadding * 2)
+
+        let rows = settings.rows
+        let cols = settings.columns
+        let totalIconRows = rows + (hasRecentApps ? 1 : 0)
+        let minRowSpacing: CGFloat = 6
+
+        let recentChrome = hasRecentApps ? recentChromeHeight : 0
+        let totalFixedVertical = recentChrome + gridVerticalPadding + CGFloat(max(0, rows - 1)) * minRowSpacing
+        let maxRowHeight = (centerHeight - totalFixedVertical) / CGFloat(max(1, totalIconRows))
+        let maxVerticalIconSize = floor(maxRowHeight - tileFixedExtraHeight)
+
+        let minColSpacing: CGFloat = 8
+        let maxSlotWidth = (gridWidth - CGFloat(max(0, cols - 1)) * minColSpacing) / CGFloat(max(1, cols))
+        let maxHorizontalIconSize = floor((maxSlotWidth - tileHorizontalPadding) / 1.14)
+
+        let rawFittingIconSize = min(Double(maxVerticalIconSize), Double(maxHorizontalIconSize))
+        let effectiveIconSize = min(settings.iconSize, max(24.0, rawFittingIconSize))
+
+        let tileHeight = CGFloat(effectiveIconSize) + tileFixedExtraHeight
+        let recentSectionHeight = hasRecentApps ? (tileHeight + recentChromeHeight) : 0
+        let availableGridHeight = max(120, centerHeight - recentSectionHeight)
+
+        let minTileNeeded = max(56, CGFloat(effectiveIconSize) * 1.14 + tileHorizontalPadding)
+        let desiredColSpacing = (gridWidth - CGFloat(cols) * minTileNeeded) / CGFloat(max(1, cols - 1))
+        let colSpacing = max(8, min(28, desiredColSpacing))
+        let tileWidth = (gridWidth - colSpacing * CGFloat(max(0, cols - 1))) / CGFloat(max(1, cols))
+
+        let remainingForRowSpacing = availableGridHeight - gridVerticalPadding - CGFloat(rows) * tileHeight
+        let rowSpacing = max(minRowSpacing, min(28, remainingForRowSpacing / CGFloat(max(1, rows - 1))))
+
+        return LaunchpadLayoutMetrics(
+            screenSize: screenSize,
+            topBarInset: topBarInset,
+            topBarTotalHeight: topBarTotalHeight,
+            bottomInset: bottomInset,
+            bottomBarTotalHeight: bottomBarTotalHeight,
+            centerSize: centerSize,
+            effectiveIconSize: effectiveIconSize,
+            tileWidth: tileWidth,
+            tileHeight: tileHeight,
+            colSpacing: colSpacing,
+            rowSpacing: rowSpacing,
+            gridWidth: gridWidth,
+            recentSectionHeight: recentSectionHeight,
+            availableGridHeight: availableGridHeight,
+            rows: rows,
+            columns: cols
         )
     }
 }

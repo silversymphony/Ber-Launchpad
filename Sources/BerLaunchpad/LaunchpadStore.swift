@@ -39,8 +39,12 @@ final class LaunchpadStore: ObservableObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     private var rescanWorkItem: DispatchWorkItem?
     private var isInitialized = false
+    private let customSupportDirectory: URL?
 
     private var appSupportDir: URL {
+        if let customSupportDirectory {
+            return customSupportDirectory
+        }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return base.appendingPathComponent("BerLaunchpad", isDirectory: true)
     }
@@ -58,7 +62,9 @@ final class LaunchpadStore: ObservableObject {
             .appendingPathComponent("Library/LaunchAgents/com.ber.launchpad.plist")
     }
 
-    private init() {}
+    init(supportDirectory: URL? = nil) {
+        self.customSupportDirectory = supportDirectory
+    }
 
     func initialize() {
         guard !isInitialized else { return }
@@ -130,7 +136,7 @@ final class LaunchpadStore: ObservableObject {
         try? FileManager.default.createDirectory(at: appSupportDir, withIntermediateDirectories: true)
     }
 
-    private func loadSettings() {
+    func loadSettings() {
         guard let data = try? Data(contentsOf: settingsFileURL),
               let decoded = try? JSONDecoder().decode(AppSettings.self, from: data) else {
             settings = .default
@@ -152,7 +158,8 @@ final class LaunchpadStore: ObservableObject {
         }
     }
 
-    private func loadLayout() -> Bool {
+    @discardableResult
+    func loadLayout() -> Bool {
         guard let data = try? Data(contentsOf: layoutFileURL),
               let decoded = try? JSONDecoder().decode([[GridEntry]].self, from: data),
               !decoded.isEmpty else {
@@ -466,8 +473,9 @@ final class LaunchpadStore: ObservableObject {
 
         let extractedApp = folder.apps.remove(at: appIdx)
         var workingPages = pages
+        let folderRemoved = folder.apps.isEmpty
 
-        if folder.apps.isEmpty {
+        if folderRemoved {
             workingPages[loc.page].remove(at: loc.index)
             openedFolderID = nil
         } else if folder.apps.count == 1 {
@@ -478,14 +486,22 @@ final class LaunchpadStore: ObservableObject {
             workingPages[loc.page][loc.index] = .folder(folder)
         }
 
-        let destPage = min(max(0, toPage ?? currentPage), workingPages.count)
+        let destPage = min(max(0, toPage ?? loc.page), workingPages.count)
         if destPage == workingPages.count {
             workingPages.append([])
         }
-        let destIdx = min(max(0, atIndex ?? workingPages[destPage].count), workingPages[destPage].count)
+
+        let defaultIndex: Int
+        if destPage == loc.page {
+            // Place extracted app immediately after its folder or dissolved partner app
+            defaultIndex = folderRemoved ? loc.index : (loc.index + 1)
+        } else {
+            defaultIndex = workingPages[destPage].count
+        }
+        let destIdx = min(max(0, atIndex ?? defaultIndex), workingPages[destPage].count)
         workingPages[destPage].insert(.app(extractedApp), at: destIdx)
 
-        // Handle overflow ripple
+        // Handle overflow ripple without losing the newly extracted app off-page when slots remain
         let limit = settings.itemsPerPage
         var cursor = destPage
         while cursor < workingPages.count && workingPages[cursor].count > limit {
@@ -501,6 +517,7 @@ final class LaunchpadStore: ObservableObject {
         clampCurrentPage()
         openedFolderID = nil
         saveLayout()
+        refreshRecentApps()
     }
 
     func renameFolder(folderID: UUID, newName: String) {
@@ -698,7 +715,7 @@ final class LaunchpadStore: ObservableObject {
         }
     }
 
-    private func removeAppFromLayout(path: String) {
+    func removeAppFromLayout(path: String) {
         var workingPages: [[GridEntry]] = []
         for page in pages {
             var newPage: [GridEntry] = []

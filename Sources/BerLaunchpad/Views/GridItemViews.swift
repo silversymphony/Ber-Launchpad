@@ -68,7 +68,7 @@ struct AppIconTileView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: LaunchpadLayoutMetrics.tileSpacing) {
             ZStack(alignment: .topLeading) {
                 ZStack {
                     if isDropTarget {
@@ -78,7 +78,7 @@ struct AppIconTileView: View {
                                 RoundedRectangle(cornerRadius: iconSize * 0.24, style: .continuous)
                                     .stroke(Color.white.opacity(0.55), lineWidth: 1.5)
                             )
-                            .frame(width: iconSize * 1.18, height: iconSize * 1.18)
+                            .frame(width: iconSize * 1.12, height: iconSize * 1.12)
                             .transition(.scale.combined(with: .opacity))
                     }
 
@@ -91,7 +91,7 @@ struct AppIconTileView: View {
                         .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
                         .scaleEffect(isPressed ? 0.90 : (isDropTarget ? 0.84 : (isHovered ? 1.03 : 1.0)))
                 }
-                .frame(width: iconSize * 1.18, height: iconSize * 1.05)
+                .frame(width: iconSize * 1.14, height: iconSize)
 
                 if isJiggleMode && showDeleteBadge && !app.isSystemApp {
                     Button(action: onDeleteTap) {
@@ -117,16 +117,16 @@ struct AppIconTileView: View {
             .modifier(JiggleModifier(isJiggling: isJiggleMode, seed: seed))
 
             Text(app.name)
-                .font(.system(size: max(11.5, min(13.5, iconSize * 0.165)), weight: .regular))
+                .font(.system(size: max(10.5, min(11.5, iconSize * 0.145)), weight: .regular))
                 .foregroundColor(.white)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .truncationMode(.tail)
                 .shadow(color: .black.opacity(0.75), radius: 2.5, x: 0, y: 1)
-                .frame(height: 34, alignment: .top)
+                .frame(height: LaunchpadLayoutMetrics.tileLabelHeight, alignment: .top)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
@@ -189,7 +189,7 @@ struct FolderIconTileView: View {
         let previewApps = Array(folder.apps.prefix(9))
         let folderBoxSize = isDropTarget ? iconSize * 1.12 : iconSize
 
-        VStack(spacing: 8) {
+        VStack(spacing: LaunchpadLayoutMetrics.tileSpacing) {
             ZStack {
                 RoundedRectangle(cornerRadius: folderBoxSize * 0.23, style: .continuous)
                     .fill(.ultraThinMaterial)
@@ -221,21 +221,21 @@ struct FolderIconTileView: View {
                 .padding(8)
                 .frame(width: folderBoxSize, height: folderBoxSize, alignment: .topLeading)
             }
-            .frame(width: iconSize * 1.18, height: iconSize * 1.05)
+            .frame(width: iconSize * 1.14, height: iconSize)
             .scaleEffect(isPressed ? 0.91 : (isHovered ? 1.03 : 1.0))
             .modifier(JiggleModifier(isJiggling: isJiggleMode, seed: seed))
 
             Text(folder.name)
-                .font(.system(size: max(11.5, min(13.5, iconSize * 0.165)), weight: .regular))
+                .font(.system(size: max(10.5, min(11.5, iconSize * 0.145)), weight: .regular))
                 .foregroundColor(.white)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .truncationMode(.tail)
                 .shadow(color: .black.opacity(0.75), radius: 2.5, x: 0, y: 1)
-                .frame(height: 34, alignment: .top)
+                .frame(height: LaunchpadLayoutMetrics.tileLabelHeight, alignment: .top)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
@@ -377,13 +377,30 @@ struct MainGridDropDelegate: DropDelegate {
         }
 
         guard let dragged = store.draggedEntry else { return false }
+
+        if let fromFolderID = store.draggedFromFolderID, case .app(let app) = dragged {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                store.extractAppFromFolder(
+                    folderID: fromFolderID,
+                    appPath: app.path,
+                    toPage: targetPage,
+                    atIndex: targetIndex
+                )
+            }
+            return true
+        }
+
         if dragged.id == targetEntry.id { return true }
 
         if store.dropTargetEntryID == targetEntry.id {
-            store.mergeEntries(draggedID: dragged.id, ontoTargetID: targetEntry.id)
-        } else {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
-                store.moveEntry(entryID: dragged.id, toPage: targetPage, atIndex: targetIndex)
+                store.mergeEntries(draggedID: dragged.id, ontoTargetID: targetEntry.id)
+            }
+        } else {
+            let xRatio = tileWidth > 0 ? info.location.x / tileWidth : 0.5
+            let insertIndex = xRatio > 0.5 ? targetIndex + 1 : targetIndex
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.84)) {
+                store.moveEntry(entryID: dragged.id, toPage: targetPage, atIndex: insertIndex)
             }
         }
         return true
@@ -394,21 +411,16 @@ struct MainGridDropDelegate: DropDelegate {
             return
         }
 
-        // Only .app can merge onto another .app or into a .folder
+        // Only .app dragged from the main grid can merge onto another .app or into a .folder
         let xRatio = tileWidth > 0 ? info.location.x / tileWidth : 0.5
-        let isCenterZone = xRatio >= 0.26 && xRatio <= 0.74 && info.location.y <= (iconSize + 24)
+        let isCenterZone = xRatio >= 0.16 && xRatio <= 0.84 && info.location.y <= (iconSize + 38)
 
-        if case .app = dragged, isCenterZone {
+        if case .app = dragged, store.draggedFromFolderID == nil, isCenterZone {
             if store.dropTargetEntryID != targetEntry.id {
                 store.dropTargetEntryID = targetEntry.id
             }
-        } else {
-            if store.dropTargetEntryID == targetEntry.id {
-                store.dropTargetEntryID = nil
-            }
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-                store.moveEntry(entryID: dragged.id, toPage: targetPage, atIndex: targetIndex)
-            }
+        } else if store.dropTargetEntryID == targetEntry.id {
+            store.dropTargetEntryID = nil
         }
     }
 }
@@ -417,6 +429,10 @@ struct EdgePageDropDelegate: DropDelegate {
     let direction: Int // -1 = previous, +1 = next
     let store: LaunchpadStore
     @Binding var pendingSwitchWorkItem: DispatchWorkItem?
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
 
     func dropEntered(info: DropInfo) {
         guard store.draggedEntry != nil else { return }
@@ -430,7 +446,7 @@ struct EdgePageDropDelegate: DropDelegate {
                     }
                 } else if direction > 0 && store.currentPage == store.pages.count - 1 {
                     // Allow creating a trailing page when dragging to right edge on last page
-                    if let dragged = store.draggedEntry {
+                    if let dragged = store.draggedEntry, store.draggedFromFolderID == nil {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
                             store.moveEntry(entryID: dragged.id, toPage: store.pages.count, atIndex: 0)
                             store.currentPage = store.pages.count - 1
@@ -449,11 +465,18 @@ struct EdgePageDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        pendingSwitchWorkItem?.cancel()
-        pendingSwitchWorkItem = nil
+        defer {
+            pendingSwitchWorkItem?.cancel()
+            pendingSwitchWorkItem = nil
+            store.draggedEntry = nil
+            store.draggedFromFolderID = nil
+            store.dropTargetEntryID = nil
+        }
         guard let dragged = store.draggedEntry else { return false }
-        store.draggedEntry = nil
-        store.dropTargetEntryID = nil
+        if let fromFolderID = store.draggedFromFolderID, case .app(let app) = dragged {
+            store.extractAppFromFolder(folderID: fromFolderID, appPath: app.path, toPage: store.currentPage, atIndex: nil)
+            return true
+        }
         store.moveEntry(entryID: dragged.id, toPage: store.currentPage, atIndex: nil)
         return true
     }
@@ -465,6 +488,10 @@ struct FolderItemDropDelegate: DropDelegate {
     let targetIndex: Int
     let store: LaunchpadStore
 
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
     func dropEntered(info: DropInfo) {
         guard let dragged = store.draggedEntry,
               case .app(let draggedApp) = dragged,
@@ -474,6 +501,21 @@ struct FolderItemDropDelegate: DropDelegate {
         withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
             store.moveAppInsideFolder(folderID: folderID, appPath: draggedApp.path, toIndex: targetIndex)
         }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        store.draggedEntry = nil
+        store.draggedFromFolderID = nil
+        store.dropTargetEntryID = nil
+        return true
+    }
+}
+
+struct FolderCardInternalDropDelegate: DropDelegate {
+    let store: LaunchpadStore
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
     }
 
     func performDrop(info: DropInfo) -> Bool {

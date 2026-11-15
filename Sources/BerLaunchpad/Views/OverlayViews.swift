@@ -9,19 +9,21 @@ struct ExpandedFolderOverlayView: View {
     @ObservedObject var store: LaunchpadStore
     let folder: FolderItem
     let screenSize: CGSize
+    let effectiveIconSize: Double
 
     @State private var folderTitle: String
     @FocusState private var isEditingTitle: Bool
 
-    init(store: LaunchpadStore, folder: FolderItem, screenSize: CGSize) {
+    init(store: LaunchpadStore, folder: FolderItem, screenSize: CGSize, effectiveIconSize: Double? = nil) {
         self.store = store
         self.folder = folder
         self.screenSize = screenSize
+        self.effectiveIconSize = effectiveIconSize ?? store.settings.iconSize
         _folderTitle = State(initialValue: folder.name)
     }
 
     private var iconSize: Double {
-        store.settings.iconSize
+        effectiveIconSize
     }
 
     private var tileWidth: CGFloat {
@@ -57,7 +59,7 @@ struct ExpandedFolderOverlayView: View {
     }
 
     private var rowHeight: CGFloat {
-        CGFloat(iconSize * 1.05 + 56)
+        CGFloat(iconSize) + LaunchpadLayoutMetrics.tileFixedExtraHeight
     }
 
     private var idealContentHeight: CGFloat {
@@ -126,6 +128,7 @@ struct ExpandedFolderOverlayView: View {
                             commitTitle()
                         }
                     }
+                    .onDrop(of: [.text], delegate: BackgroundFallbackDropDelegate(store: store))
 
                 ScrollView(.vertical, showsIndicators: false) {
                     let columns = Array(
@@ -173,7 +176,7 @@ struct ExpandedFolderOverlayView: View {
                 }
                 .frame(width: cardWidth, height: cardHeight)
                 .animation(.spring(response: 0.28, dampingFraction: 0.84), value: folder.apps.count)
-                .animation(.spring(response: 0.28, dampingFraction: 0.84), value: store.settings.iconSize)
+                .animation(.spring(response: 0.28, dampingFraction: 0.84), value: effectiveIconSize)
                 .background(
                     RoundedRectangle(cornerRadius: 34, style: .continuous)
                         .fill(.ultraThinMaterial)
@@ -186,6 +189,8 @@ struct ExpandedFolderOverlayView: View {
                                 .stroke(Color.white.opacity(0.28), lineWidth: 1)
                         )
                 )
+                .contentShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+                .onDrop(of: [.text], delegate: FolderCardInternalDropDelegate(store: store))
                 .shadow(color: .black.opacity(0.45), radius: 30, y: 12)
                 .onTapGesture {
                     // Absorb clicks inside the folder card so it doesn't dismiss when clicking empty gap inside folder
@@ -198,6 +203,7 @@ struct ExpandedFolderOverlayView: View {
                 Text("Drag an app outside the box to remove it from this folder")
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.55))
+                    .onDrop(of: [.text], delegate: BackgroundFallbackDropDelegate(store: store))
             }
             .padding(.vertical, 32)
         }
