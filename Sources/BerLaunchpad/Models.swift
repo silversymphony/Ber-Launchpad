@@ -245,6 +245,7 @@ struct AppSettings: Codable, Equatable {
     var replaceF4LaunchpadKey: Bool
     var showRecentApps: Bool
     var recentAppPaths: [String]
+    var hiddenAppPaths: [String]
 
     static let `default` = AppSettings(
         columns: 7,
@@ -257,7 +258,8 @@ struct AppSettings: Codable, Equatable {
         disableDefaultAppsOnShortcut: true,
         replaceF4LaunchpadKey: true,
         showRecentApps: true,
-        recentAppPaths: []
+        recentAppPaths: [],
+        hiddenAppPaths: []
     )
 
     var itemsPerPage: Int {
@@ -275,7 +277,8 @@ struct AppSettings: Codable, Equatable {
         disableDefaultAppsOnShortcut: Bool = true,
         replaceF4LaunchpadKey: Bool = true,
         showRecentApps: Bool = true,
-        recentAppPaths: [String] = []
+        recentAppPaths: [String] = [],
+        hiddenAppPaths: [String] = []
     ) {
         self.columns = min(max(columns, 5), 10)
         self.rows = min(max(rows, 4), 8)
@@ -288,6 +291,7 @@ struct AppSettings: Codable, Equatable {
         self.replaceF4LaunchpadKey = replaceF4LaunchpadKey
         self.showRecentApps = showRecentApps
         self.recentAppPaths = recentAppPaths
+        self.hiddenAppPaths = hiddenAppPaths
     }
 
     init(from decoder: Decoder) throws {
@@ -304,6 +308,7 @@ struct AppSettings: Codable, Equatable {
         let replaceF4LaunchpadKey = try container.decodeIfPresent(Bool.self, forKey: .replaceF4LaunchpadKey) ?? def.replaceF4LaunchpadKey
         let showRecentApps = try container.decodeIfPresent(Bool.self, forKey: .showRecentApps) ?? def.showRecentApps
         let recentAppPaths = try container.decodeIfPresent([String].self, forKey: .recentAppPaths) ?? def.recentAppPaths
+        let hiddenAppPaths = try container.decodeIfPresent([String].self, forKey: .hiddenAppPaths) ?? def.hiddenAppPaths
         self.init(
             columns: columns,
             rows: rows,
@@ -315,7 +320,8 @@ struct AppSettings: Codable, Equatable {
             disableDefaultAppsOnShortcut: disableDefaultAppsOnShortcut,
             replaceF4LaunchpadKey: replaceF4LaunchpadKey,
             showRecentApps: showRecentApps,
-            recentAppPaths: recentAppPaths
+            recentAppPaths: recentAppPaths,
+            hiddenAppPaths: hiddenAppPaths
         )
     }
 }

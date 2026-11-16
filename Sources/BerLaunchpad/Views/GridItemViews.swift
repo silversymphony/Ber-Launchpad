@@ -55,9 +55,11 @@ struct AppIconTileView: View {
     let isSelected: Bool
     let isDropTarget: Bool
     let showDeleteBadge: Bool
+    var showHideBadge: Bool = false
     let onTap: () -> Void
     let onLongPress: () -> Void
     let onDeleteTap: () -> Void
+    var onHideTap: () -> Void = {}
 
     @ObservedObject private var iconCache = IconCache.shared
     @State private var isPressed = false
@@ -69,7 +71,7 @@ struct AppIconTileView: View {
 
     var body: some View {
         VStack(spacing: LaunchpadLayoutMetrics.tileSpacing) {
-            ZStack(alignment: .topLeading) {
+            ZStack {
                 ZStack {
                     if isDropTarget {
                         RoundedRectangle(cornerRadius: iconSize * 0.24, style: .continuous)
@@ -92,26 +94,51 @@ struct AppIconTileView: View {
                         .scaleEffect(isPressed ? 0.90 : (isDropTarget ? 0.84 : (isHovered ? 1.03 : 1.0)))
                 }
                 .frame(width: iconSize * 1.14, height: iconSize)
-
-                if isJiggleMode && showDeleteBadge && !app.isSystemApp {
-                    Button(action: onDeleteTap) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(white: 0.22).opacity(0.92))
-                                .frame(width: 22, height: 22)
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.white.opacity(0.35), lineWidth: 0.75)
-                                )
-                            Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
+                .overlay(alignment: .topLeading) {
+                    if isJiggleMode && showDeleteBadge && !app.isSystemApp {
+                        Button(action: onDeleteTap) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(white: 0.22).opacity(0.92))
+                                    .frame(width: 22, height: 22)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.35), lineWidth: 0.75)
+                                    )
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
                         }
-                        .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                        .buttonStyle(.plain)
+                        .help("Move to Trash")
+                        .offset(x: 2, y: -4)
+                        .transition(.scale.combined(with: .opacity))
                     }
-                    .buttonStyle(.plain)
-                    .offset(x: 2, y: -4)
-                    .transition(.scale.combined(with: .opacity))
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isJiggleMode && showHideBadge {
+                        Button(action: onHideTap) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(red: 0.16, green: 0.24, blue: 0.38).opacity(0.94))
+                                    .frame(width: 22, height: 22)
+                                    .overlay(
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.40), lineWidth: 0.75)
+                                    )
+                                Image(systemName: "eye.slash.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .shadow(color: .black.opacity(0.45), radius: 3, y: 1)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Hide from Launchpad")
+                        .offset(x: -2, y: -4)
+                        .transition(.scale.combined(with: .opacity))
+                    }
                 }
             }
             .modifier(JiggleModifier(isJiggling: isJiggleMode, seed: seed))

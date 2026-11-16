@@ -144,6 +144,7 @@ struct ExpandedFolderOverlayView: View {
                                 isSelected: store.selectedIndex == index,
                                 isDropTarget: false,
                                 showDeleteBadge: true,
+                                showHideBadge: true,
                                 onTap: {
                                     store.launchApp(app)
                                 },
@@ -154,6 +155,11 @@ struct ExpandedFolderOverlayView: View {
                                 },
                                 onDeleteTap: {
                                     store.requestDelete(app)
+                                },
+                                onHideTap: {
+                                    withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+                                        store.hideApp(app)
+                                    }
                                 }
                             )
                             .onDrag {
@@ -225,6 +231,7 @@ struct DeleteConfirmationOverlayView: View {
     let app: AppItem
     let onCancel: () -> Void
     let onConfirm: () -> Void
+    var onHideInstead: (() -> Void)? = nil
 
     @ObservedObject private var iconCache = IconCache.shared
 
@@ -248,7 +255,7 @@ struct DeleteConfirmationOverlayView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
 
-                    Text("This will move “\(app.name)” to the Trash.")
+                    Text("This will move “\(app.name)” to the Trash, or you can hide it from Launchpad only.")
                         .font(.system(size: 12))
                         .foregroundColor(.white.opacity(0.75))
                         .multilineTextAlignment(.center)
@@ -268,6 +275,25 @@ struct DeleteConfirmationOverlayView: View {
                     }
                     .buttonStyle(.plain)
 
+                    if let onHideInstead {
+                        Button(action: onHideInstead) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "eye.slash")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text("Hide")
+                            }
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 30)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(Color(red: 0.20, green: 0.34, blue: 0.56).opacity(0.92))
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     Button(action: onConfirm) {
                         Text("Delete")
                             .font(.system(size: 13, weight: .semibold))
@@ -284,7 +310,7 @@ struct DeleteConfirmationOverlayView: View {
                 .padding(.top, 4)
             }
             .padding(22)
-            .frame(width: 300)
+            .frame(width: 340)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(.ultraThickMaterial)
@@ -306,6 +332,7 @@ struct DeleteConfirmationOverlayView: View {
 
 struct SettingsOverlayView: View {
     @ObservedObject var store: LaunchpadStore
+    @ObservedObject private var iconCache = IconCache.shared
     @State private var confirmResetPreset: LayoutPreset?
 
     var body: some View {
@@ -318,7 +345,7 @@ struct SettingsOverlayView: View {
                     }
                 }
 
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 14) {
                 // Header
                 HStack {
                     HStack(spacing: 10) {
@@ -348,8 +375,10 @@ struct SettingsOverlayView: View {
 
                 Divider().overlay(Color.white.opacity(0.15))
 
-                // Grid Dimensions
-                VStack(alignment: .leading, spacing: 10) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        // Grid Dimensions
+                        VStack(alignment: .leading, spacing: 10) {
                     Text("Grid & Appearance")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.white.opacity(0.65))
@@ -558,6 +587,72 @@ struct SettingsOverlayView: View {
                             .fill(Color.yellow.opacity(0.12))
                     )
                 }
+
+                        Divider().overlay(Color.white.opacity(0.15))
+
+                        // Hidden Apps Management
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Hidden Apps (\(store.hiddenApps.count))")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.65))
+                                    .textCase(.uppercase)
+                                Spacer()
+                                if !store.hiddenApps.isEmpty {
+                                    Button("Unhide All") {
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                            store.unhideAllApps()
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
+
+                            if store.hiddenApps.isEmpty {
+                                Text("No hidden apps. Long-press an icon (Jiggle mode) and click the top-right eye icon to hide any app.")
+                                    .font(.system(size: 11.5))
+                                    .foregroundColor(.white.opacity(0.55))
+                            } else {
+                                VStack(spacing: 6) {
+                                    ForEach(store.hiddenApps) { hiddenApp in
+                                        HStack(spacing: 10) {
+                                            Image(nsImage: iconCache.icon(for: hiddenApp.path))
+                                                .resizable()
+                                                .interpolation(.high)
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(width: 22, height: 22)
+
+                                            Text(hiddenApp.name)
+                                                .font(.system(size: 12.5, weight: .medium))
+                                                .foregroundColor(.white)
+                                                .lineLimit(1)
+                                                .truncationMode(.tail)
+
+                                            Spacer()
+
+                                            Button("Unhide") {
+                                                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                                    store.unhideApp(path: hiddenApp.path)
+                                                }
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.mini)
+                                        }
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .fill(Color.white.opacity(0.08))
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .frame(maxHeight: 520)
 
                 Divider().overlay(Color.white.opacity(0.15))
 

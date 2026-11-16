@@ -8,6 +8,7 @@ final class LaunchpadStore: ObservableObject {
 
     @Published var pages: [[GridEntry]] = [[]]
     @Published var recentApps: [AppItem] = []
+    @Published var hiddenApps: [AppItem] = []
     @Published var settings: AppSettings = .default
     @Published var currentPage: Int = 0
     @Published var searchText: String = "" {
@@ -39,6 +40,7 @@ final class LaunchpadStore: ObservableObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     private var rescanWorkItem: DispatchWorkItem?
     private var isInitialized = false
+    private var lastScannedApps: [AppItem] = []
     private let customSupportDirectory: URL?
 
     private var appSupportDir: URL {
@@ -75,6 +77,7 @@ final class LaunchpadStore: ObservableObject {
         let hadSavedLayout = loadLayout()
         if hadSavedLayout {
             refreshRecentApps()
+            refreshHiddenAppsList()
         }
         syncInstalledApps(initialIfNeeded: !hadSavedLayout)
         startDirectoryMonitoring()
@@ -184,6 +187,7 @@ final class LaunchpadStore: ObservableObject {
         Task.detached(priority: .userInitiated) {
             let scanned = AppScanner.scanInstalledApps()
             await MainActor.run {
+                self.lastScannedApps = scanned
                 if initialIfNeeded || (self.pages.count == 1 && self.pages[0].isEmpty) {
                     self.applyLayoutPreset(.categoryFolders, withScannedApps: scanned)
                 } else {
@@ -194,8 +198,12 @@ final class LaunchpadStore: ObservableObject {
         }
     }
 
-    private func mergeScannedApps(_ scannedApps: [AppItem]) {
-        let scannedByPath = Dictionary(uniqueKeysWithValues: scannedApps.map { ($0.path, $0) })
+    func mergeScannedApps(_ scannedApps: [AppItem]) {
+        self.lastScannedApps = scannedApps
+        let hiddenSet = Set(settings.hiddenAppPaths)
+        let visibleApps = scannedApps.filter { !hiddenSet.contains($0.path) }
+
+        let scannedByPath = Dictionary(uniqueKeysWithValues: visibleApps.map { ($0.path, $0) })
         var existingPaths = Set<String>()
         var updatedPages: [[GridEntry]] = []
 
@@ -230,7 +238,7 @@ final class LaunchpadStore: ObservableObject {
         }
 
         // Append newly installed apps (into matching category folder when layout uses top-level folders, or onto the last page)
-        let newApps = scannedApps.filter { !existingPaths.contains($0.path) }
+        let newApps = visibleApps.filter { !existingPaths.contains($0.path) }
         let limit = settings.itemsPerPage
         let isFolderOnlyLayout = !updatedPages[0].isEmpty && updatedPages[0].allSatisfy { $0.asFolder != nil }
         for app in newApps {
@@ -252,6 +260,7 @@ final class LaunchpadStore: ObservableObject {
         clampCurrentPage()
         saveLayout()
         refreshRecentApps()
+        refreshHiddenAppsList(from: scannedApps)
     }
 
     private func findFolder(named name: String, in candidatePages: [[GridEntry]]) -> (page: Int, index: Int)? {
@@ -266,7 +275,10 @@ final class LaunchpadStore: ObservableObject {
     // MARK: - Layout Presets
 
     func applyLayoutPreset(_ preset: LayoutPreset, withScannedApps providedApps: [AppItem]? = nil) {
-        let apps = providedApps ?? AppScanner.scanInstalledApps()
+        let rawApps = providedApps ?? AppScanner.scanInstalledApps()
+        lastScannedApps = rawApps
+        let hiddenSet = Set(settings.hiddenAppPaths)
+        let apps = rawApps.filter { !hiddenSet.contains($0.path) }
         let entries: [GridEntry]
 
         switch preset {
@@ -332,6 +344,7 @@ final class LaunchpadStore: ObservableObject {
         selectedIndex = nil
         saveLayout()
         refreshRecentApps()
+        refreshHiddenAppsList(from: rawApps)
         IconCache.shared.preload(paths: apps.map(\.path))
     }
 
@@ -714,6 +727,60 @@ final class LaunchpadStore: ObservableObject {
     func requestDelete(_ app: AppItem) {
         guard !app.isSystemApp else { return }
         appPendingDelete = app
+    }
+
+    func hideApp(_ app: AppItem) {
+        if lastScannedApps.isEmpty {
+            lastScannedApps = allApps
+        } else if !lastScannedApps.contains(where: { $0.path == app.path }) {
+            lastScannedApps.append(app)
+        }
+        if !settings.hiddenAppPaths.contains(app.path) {
+            settings.hiddenAppPaths.append(app.path)
+        }
+        settings.recentAppPaths.removeAll { $0 == app.path }
+        saveSettings()
+        removeAppFromLayout(path: app.path)
+        refreshHiddenAppsList()
+    }
+
+    func unhideApp(path: String) {
+        settings.hiddenAppPaths.removeAll { $0 == path }
+        saveSettings()
+        let source = lastScannedApps.isEmpty ? AppScanner.scanInstalledApps() : lastScannedApps
+        mergeScannedApps(source)
+    }
+
+    func unhideAllApps() {
+        settings.hiddenAppPaths.removeAll()
+        saveSettings()
+        let source = lastScannedApps.isEmpty ? AppScanner.scanInstalledApps() : lastScannedApps
+        mergeScannedApps(source)
+    }
+
+    func refreshHiddenAppsList(from scannedApps: [AppItem]? = nil) {
+        let hiddenPaths = settings.hiddenAppPaths
+        guard !hiddenPaths.isEmpty else {
+            hiddenApps = []
+            return
+        }
+        let catalog = scannedApps ?? lastScannedApps
+        let byPath = Dictionary(catalog.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+        hiddenApps = hiddenPaths.compactMap { path -> AppItem? in
+            if let existing = byPath[path] {
+                return existing
+            }
+            let rawName = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+            guard !rawName.isEmpty else { return nil }
+            return AppItem(
+                name: rawName,
+                bundleIdentifier: "",
+                path: path,
+                category: .other,
+                isSystemApp: path.hasPrefix("/System/")
+            )
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     func executePendingDelete() {

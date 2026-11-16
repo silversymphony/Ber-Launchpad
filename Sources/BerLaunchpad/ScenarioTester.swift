@@ -300,6 +300,47 @@ enum ScenarioTester {
             }
         }
 
+        runTest("Test 12: Hide app removes it from Launchpad & folders without deleting, and Unhide restores it") {
+            let dir = tempRoot.appendingPathComponent("t12", isDirectory: true)
+            let store = makeStore(dir: dir)
+            let apps = makeApps(count: 6)
+            let folder = FolderItem(name: apps[0].category.displayName, apps: [apps[0], apps[1]])
+            store.pages = [[.folder(folder), .app(apps[2]), .app(apps[3]), .app(apps[4]), .app(apps[5])]]
+            store.recordRecentApp(apps[1])
+            store.recordRecentApp(apps[2])
+
+            // Hide app inside folder -> dissolves 1-app folder and removes from Recent & Pages
+            store.hideApp(apps[1])
+            try assertTrue(store.settings.hiddenAppPaths.contains(apps[1].path), "Hidden path persisted in settings")
+            try assertFalse(store.allApps.contains(where: { $0.path == apps[1].path }), "Hidden app removed from visible allApps")
+            try assertFalse(store.settings.recentAppPaths.contains(apps[1].path), "Hidden app removed from recent apps")
+            try assertEqual(store.pages[0][0].asApp?.path, apps[0].path, "1-app folder dissolved cleanly on hide")
+            try assertTrue(store.hiddenApps.contains(where: { $0.path == apps[1].path }), "Hidden app appears in hiddenApps list")
+
+            // Hide standalone app & verify rescan still excludes hidden apps
+            store.hideApp(apps[3])
+            try assertEqual(store.hiddenApps.count, 2, "Two apps tracked as hidden")
+            store.mergeScannedApps(apps)
+            try assertEqual(totalAppCount(in: store.pages), 4, "Rescan must keep hidden apps excluded")
+
+            // Persistence round-trip
+            let reloaded = LaunchpadStore(supportDirectory: dir)
+            reloaded.loadSettings()
+            try assertTrue(reloaded.loadLayout(), "Reloaded layout succeeds")
+            try assertEqual(reloaded.settings.hiddenAppPaths.count, 2, "Hidden paths survive settings reload")
+            reloaded.refreshHiddenAppsList(from: apps)
+            try assertEqual(reloaded.hiddenApps.count, 2, "Reloaded hiddenApps resolves cleanly")
+
+            // Unhide one app and then unhide all
+            store.unhideApp(path: apps[1].path)
+            try assertEqual(store.hiddenApps.count, 1, "Unhide removes app from hidden list")
+            try assertEqual(totalAppCount(in: store.pages), 5, "Unhidden app restored to Launchpad")
+
+            store.unhideAllApps()
+            try assertEqual(store.hiddenApps.count, 0, "Unhide All clears hidden list")
+            try assertEqual(totalAppCount(in: store.pages), 6, "All apps restored after Unhide All")
+        }
+
         print("=== Summary: \(passedCount) passed, \(failures.count) failed ===")
         if !failures.isEmpty {
             for msg in failures {
@@ -375,6 +416,12 @@ enum ScenarioTester {
 
     private static func assertTrue(_ condition: Bool, _ message: String) throws {
         if !condition {
+            throw failureError(message)
+        }
+    }
+
+    private static func assertFalse(_ condition: Bool, _ message: String) throws {
+        if condition {
             throw failureError(message)
         }
     }

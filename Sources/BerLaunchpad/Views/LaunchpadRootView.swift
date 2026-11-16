@@ -142,6 +142,12 @@ struct LaunchpadRootView: View {
                         },
                         onConfirm: {
                             store.executePendingDelete()
+                        },
+                        onHideInstead: {
+                            withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+                                store.hideApp(pendingApp)
+                                store.appPendingDelete = nil
+                            }
                         }
                     )
                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
@@ -347,6 +353,7 @@ struct LaunchpadRootView: View {
                     isSelected: isSelected,
                     isDropTarget: isDropTarget,
                     showDeleteBadge: true,
+                    showHideBadge: true,
                     onTap: {
                         store.launchApp(app)
                     },
@@ -357,6 +364,11 @@ struct LaunchpadRootView: View {
                     },
                     onDeleteTap: {
                         store.requestDelete(app)
+                    },
+                    onHideTap: {
+                        withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+                            store.hideApp(app)
+                        }
                     }
                 )
             case .folder(let folder):
