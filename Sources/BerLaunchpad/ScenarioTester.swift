@@ -285,6 +285,18 @@ enum ScenarioTester {
                     systemScanned.contains(where: { $0.path == realCCPath || $0.name == "Adobe Creative Cloud" }),
                     "System scan should include Adobe Creative Cloud from /Applications"
                 )
+                let depth3ExpectedPaths = [
+                    "/Applications/Autodesk/AutoCAD 2024/AutoCAD 2024.app",
+                    "/Applications/BorisFX/Continuum 2024 Adobe/Particle Illusion.app",
+                    "/Applications/BorisFX/Continuum 2024 Adobe/Title Studio.app",
+                    "/Applications/Imagenomic/Portraiture 4 Plug-in for Lightroom/Portraiture4.app"
+                ]
+                for expectedPath in depth3ExpectedPaths where fm.fileExists(atPath: expectedPath) {
+                    try assertTrue(
+                        systemScanned.contains(where: { $0.path == expectedPath }),
+                        "System depth-3 scan should include \(expectedPath)"
+                    )
+                }
             }
         }
 

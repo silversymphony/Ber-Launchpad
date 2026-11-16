@@ -25,8 +25,8 @@ enum AppScanner {
             (URL(fileURLWithPath: "/System/Applications"), 2),
             (URL(fileURLWithPath: "/System/Cryptexes/App/System/Applications"), 1),
             (URL(fileURLWithPath: "/System/Volumes/Preboot/Cryptexes/App/System/Applications"), 1),
-            (URL(fileURLWithPath: "/Applications"), 2),
-            (home.appendingPathComponent("Applications"), 2)
+            (URL(fileURLWithPath: "/Applications"), 3),
+            (home.appendingPathComponent("Applications"), 3)
         ]
 
         var seenResolvedPaths = Set<String>()
@@ -96,7 +96,17 @@ enum AppScanner {
             }
 
             // Descend into non-.app subdirectories (e.g., Utilities, Chrome Apps.localized, Adobe folders)
-            if resourceValues?.isDirectory == true {
+            let skippedBundleExtensions: Set<String> = [
+                "framework", "bundle", "plugin", "kext", "qlgenerator",
+                "mdimporter", "prefpane", "xpc", "appex"
+            ]
+            let skippedUtilitySubpaths: Set<String> = [
+                "/Applications/Utilities/Adobe Genuine Service",
+                "/Applications/Utilities/Adobe Installers"
+            ]
+            if resourceValues?.isDirectory == true,
+               !skippedBundleExtensions.contains(url.pathExtension.lowercased()),
+               !skippedUtilitySubpaths.contains(url.path) {
                 results.append(
                     contentsOf: collectAppBundles(
                         in: url,
