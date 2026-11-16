@@ -229,20 +229,38 @@ final class LaunchpadStore: ObservableObject {
             updatedPages = [[]]
         }
 
-        // Append newly installed apps to the last page (creating pages if needed)
+        // Append newly installed apps (into matching category folder when layout uses top-level folders, or onto the last page)
         let newApps = scannedApps.filter { !existingPaths.contains($0.path) }
         let limit = settings.itemsPerPage
+        let isFolderOnlyLayout = !updatedPages[0].isEmpty && updatedPages[0].allSatisfy { $0.asFolder != nil }
         for app in newApps {
-            if updatedPages[updatedPages.count - 1].count >= limit {
-                updatedPages.append([])
+            if isFolderOnlyLayout,
+               let targetLocation = findFolder(named: app.category.displayName, in: updatedPages),
+               case .folder(var folder) = updatedPages[targetLocation.page][targetLocation.index] {
+                folder.apps.append(app)
+                folder.apps.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                updatedPages[targetLocation.page][targetLocation.index] = .folder(folder)
+            } else {
+                if updatedPages[updatedPages.count - 1].count >= limit {
+                    updatedPages.append([])
+                }
+                updatedPages[updatedPages.count - 1].append(.app(app))
             }
-            updatedPages[updatedPages.count - 1].append(.app(app))
         }
 
         pages = normalizePages(updatedPages)
         clampCurrentPage()
         saveLayout()
         refreshRecentApps()
+    }
+
+    private func findFolder(named name: String, in candidatePages: [[GridEntry]]) -> (page: Int, index: Int)? {
+        for (pIdx, page) in candidatePages.enumerated() {
+            if let iIdx = page.firstIndex(where: { $0.asFolder?.name == name }) {
+                return (pIdx, iIdx)
+            }
+        }
+        return nil
     }
 
     // MARK: - Layout Presets
@@ -566,7 +584,8 @@ final class LaunchpadStore: ObservableObject {
 
     func launchApp(_ app: AppItem) {
         recordRecentApp(app)
-        let appURL = URL(fileURLWithPath: app.path)
+        let rawURL = URL(fileURLWithPath: app.path)
+        let appURL = rawURL.pathExtension.lowercased() == "app" ? rawURL : rawURL.resolvingSymlinksInPath()
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
 

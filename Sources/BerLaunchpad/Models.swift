@@ -97,7 +97,7 @@ enum AppCategory: String, Codable, CaseIterable, Hashable {
             "podcasts", "tv", "quicktime", "vlc", "iina", "infuse", "plex", "obs",
             "handbrake", "pixelmator", "procreate", "photos", "photo booth",
             "image capture", "preview", "screenflow", "cleanshot", "shottr",
-            "4k video", "blackmagic", "autopano", "imovie", "keyshot"
+            "4k video", "blackmagic", "autopano", "imovie", "keyshot", "creative cloud"
         ]
         if mediaKeywords.contains(where: { lowerName.contains($0) || lowerBundle.contains($0) }) {
             return .graphicsAndMedia

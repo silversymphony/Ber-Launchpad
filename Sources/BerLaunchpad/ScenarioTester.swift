@@ -254,6 +254,40 @@ enum ScenarioTester {
             }
         }
 
+        runTest("Test 11: AppScanner detects symlinked app bundles without .app extension (Adobe Creative Cloud)") {
+            let fm = FileManager.default
+            let rootDir = tempRoot.appendingPathComponent("t11_apps", isDirectory: true)
+            let realTargetBundle = tempRoot.appendingPathComponent("t11_targets/Creative Cloud.app", isDirectory: true)
+            let plistDir = realTargetBundle.appendingPathComponent("Contents", isDirectory: true)
+            try fm.createDirectory(at: plistDir, withIntermediateDirectories: true)
+            let plist: [String: Any] = [
+                "CFBundleIdentifier": "com.adobe.acc.AdobeCreativeCloud",
+                "CFBundleName": "Creative Cloud"
+            ]
+            let plistData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+            try plistData.write(to: plistDir.appendingPathComponent("Info.plist"))
+
+            let subfolder = rootDir.appendingPathComponent("Adobe Creative Cloud", isDirectory: true)
+            try fm.createDirectory(at: subfolder, withIntermediateDirectories: true)
+            let symlinkPath = subfolder.appendingPathComponent("Adobe Creative Cloud")
+            try fm.createSymbolicLink(at: symlinkPath, withDestinationURL: realTargetBundle)
+
+            let scannedSynthetic = AppScanner.scanInstalledApps(in: [(rootDir, 2)])
+            try assertEqual(scannedSynthetic.count, 1, "Should detect synthetic symlinked app without .app extension")
+            try assertEqual(scannedSynthetic[0].name, "Adobe Creative Cloud", "Synthetic symlink app should keep symlink display name")
+            try assertEqual(scannedSynthetic[0].bundleIdentifier, "com.adobe.acc.AdobeCreativeCloud", "Should read bundle ID from symlink target Info.plist")
+            try assertEqual(scannedSynthetic[0].category, .graphicsAndMedia, "Should classify Creative Cloud under Graphics & Media")
+
+            let realCCPath = "/Applications/Adobe Creative Cloud/Adobe Creative Cloud"
+            if fm.fileExists(atPath: realCCPath) {
+                let systemScanned = AppScanner.scanInstalledApps()
+                try assertTrue(
+                    systemScanned.contains(where: { $0.path == realCCPath || $0.name == "Adobe Creative Cloud" }),
+                    "System scan should include Adobe Creative Cloud from /Applications"
+                )
+            }
+        }
+
         print("=== Summary: \(passedCount) passed, \(failures.count) failed ===")
         if !failures.isEmpty {
             for msg in failures {

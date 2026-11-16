@@ -17,11 +17,11 @@ enum AppScanner {
         ]
     }
 
-    static func scanInstalledApps() -> [AppItem] {
+    static func scanInstalledApps(in customRoots: [(url: URL, maxDepth: Int)]? = nil) -> [AppItem] {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser
 
-        let searchRoots: [(url: URL, maxDepth: Int)] = [
+        let searchRoots: [(url: URL, maxDepth: Int)] = customRoots ?? [
             (URL(fileURLWithPath: "/System/Applications"), 2),
             (URL(fileURLWithPath: "/System/Cryptexes/App/System/Applications"), 1),
             (URL(fileURLWithPath: "/System/Volumes/Preboot/Cryptexes/App/System/Applications"), 1),
@@ -85,8 +85,17 @@ enum AppScanner {
                 continue
             }
 
+            let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            if resourceValues?.isSymbolicLink == true {
+                let resolvedURL = url.resolvingSymlinksInPath()
+                if resolvedURL.pathExtension.lowercased() == "app",
+                   fileManager.fileExists(atPath: resolvedURL.path) {
+                    results.append(url)
+                    continue
+                }
+            }
+
             // Descend into non-.app subdirectories (e.g., Utilities, Chrome Apps.localized, Adobe folders)
-            let resourceValues = try? url.resourceValues(forKeys: [.isDirectoryKey])
             if resourceValues?.isDirectory == true {
                 results.append(
                     contentsOf: collectAppBundles(
@@ -106,7 +115,8 @@ enum AppScanner {
         resolvedPath: String,
         fileManager: FileManager
     ) -> AppItem? {
-        let infoPlistURL = url.appendingPathComponent("Contents/Info.plist")
+        let bundleURL = url.pathExtension.lowercased() == "app" ? url : URL(fileURLWithPath: resolvedPath)
+        let infoPlistURL = bundleURL.appendingPathComponent("Contents/Info.plist")
         let plist = NSDictionary(contentsOf: infoPlistURL) as? [String: Any] ?? [:]
 
         // Skip background-only helper apps
