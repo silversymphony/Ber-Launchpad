@@ -328,6 +328,116 @@ struct DeleteConfirmationOverlayView: View {
     }
 }
 
+// MARK: - Delete Error Overlay (In-App Modal so Launchpad Never Resigns Key)
+
+struct DeleteErrorOverlayView: View {
+    let errorInfo: LaunchpadStore.DeleteErrorInfo
+    let onHideInstead: () -> Void
+    let onOpenPrivacySettings: () -> Void
+    let onDismiss: () -> Void
+
+    @ObservedObject private var iconCache = IconCache.shared
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .onTapGesture(perform: onDismiss)
+
+            VStack(spacing: 14) {
+                ZStack(alignment: .bottomTrailing) {
+                    Image(nsImage: iconCache.icon(for: errorInfo.app.path))
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 56, height: 56)
+
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.yellow)
+                        .shadow(color: .black.opacity(0.6), radius: 3)
+                        .offset(x: 4, y: 4)
+                }
+
+                Text("Unable to Delete “\(errorInfo.app.name)”")
+                    .font(.system(size: 14.5, weight: .semibold))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+
+                Text(errorInfo.message)
+                    .font(.system(size: 12))
+                    .foregroundColor(.white.opacity(0.8))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(spacing: 8) {
+                    if errorInfo.isPermissionError {
+                        Button(action: onOpenPrivacySettings) {
+                            Text("Open Privacy Settings")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 30)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(Color.accentColor)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    HStack(spacing: 10) {
+                        Button(action: onHideInstead) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "eye.slash")
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text("Hide from Launchpad")
+                            }
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 30)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(Color(red: 0.20, green: 0.34, blue: 0.56).opacity(0.92))
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(action: onDismiss) {
+                            Text("OK")
+                                .font(.system(size: 12.5, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(width: 84, height: 30)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(Color.white.opacity(0.16))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 4)
+            }
+            .padding(22)
+            .frame(width: 370)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.ultraThickMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color(white: 0.14).opacity(0.78))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+            )
+            .shadow(color: .black.opacity(0.55), radius: 28, y: 12)
+        }
+    }
+}
+
 // MARK: - Settings Overlay
 
 struct SettingsOverlayView: View {

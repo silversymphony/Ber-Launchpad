@@ -341,6 +341,31 @@ enum ScenarioTester {
             try assertEqual(totalAppCount(in: store.pages), 6, "All apps restored after Unhide All")
         }
 
+        runTest("Test 13: Delete flow state & permission-error overlay keep Launchpad open and offer Hide fallback") {
+            let dir = tempRoot.appendingPathComponent("t13", isDirectory: true)
+            let store = makeStore(dir: dir)
+            let apps = makeApps(count: 3)
+            store.pages = [apps.map { .app($0) }]
+            store.requestDelete(apps[0])
+            try assertEqual(store.appPendingDelete?.path, apps[0].path, "Pending delete captures target app")
+
+            // Simulate permission error modal state and user choosing Hide instead
+            let errInfo = LaunchpadStore.DeleteErrorInfo(
+                app: apps[0],
+                message: "Permission denied",
+                isPermissionError: true,
+                isAutomationError: true
+            )
+            store.appPendingDelete = nil
+            store.deleteErrorInfo = errInfo
+            store.hideApp(errInfo.app)
+            store.deleteErrorInfo = nil
+
+            try assertTrue(store.deleteErrorInfo == nil, "Error overlay cleared")
+            try assertFalse(store.allApps.contains(where: { $0.path == apps[0].path }), "Hidden app removed from visible grid cleanly after permission error fallback")
+            try assertTrue(store.settings.hiddenAppPaths.contains(apps[0].path), "App persisted in hiddenAppPaths")
+        }
+
         print("=== Summary: \(passedCount) passed, \(failures.count) failed ===")
         if !failures.isEmpty {
             for msg in failures {

@@ -29,9 +29,13 @@ final class LaunchpadStore: ObservableObject {
     @Published var draggedEntry: GridEntry?
     @Published var draggedFromFolderID: UUID?
     @Published var dropTargetEntryID: String?
-    @Published var deleteErrorMessage: String?
+
+    // Deletion state
+    @Published var isDeletingApp: Bool = false
+    @Published var deleteErrorInfo: DeleteErrorInfo?
 
     var onRequestHide: ((_ restorePreviousApp: Bool) -> Void)?
+    var onDeleteFlowFinished: (() -> Void)?
     var onHotkeyChanged: ((UInt32, UInt32) -> Void)?
     var onHotKeySettingsChanged: (() -> Void)?
 
@@ -783,22 +787,152 @@ final class LaunchpadStore: ObservableObject {
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    func executePendingDelete() {
-        guard let app = appPendingDelete else { return }
-        appPendingDelete = nil
-        let url = URL(fileURLWithPath: app.path)
+    struct DeleteErrorInfo: Equatable {
+        let app: AppItem
+        let message: String
+        let isPermissionError: Bool
+        let isAutomationError: Bool
+    }
 
-        NSWorkspace.shared.recycle([url]) { [weak self] _, error in
-            Task { @MainActor in
+    private enum TrashAttemptResult {
+        case success
+        case cancelled
+        case failure(message: String, isPermissionError: Bool, isAutomationError: Bool)
+    }
+
+    func executePendingDelete() {
+        guard let app = appPendingDelete, !isDeletingApp else { return }
+        appPendingDelete = nil
+        deleteErrorInfo = nil
+        isDeletingApp = true
+
+        let appPath = app.path
+        let appName = app.name
+
+        Task.detached(priority: .userInitiated) {
+            let result = Self.moveItemToTrash(path: appPath, appName: appName)
+            await MainActor.run { [weak self] in
                 guard let self else { return }
-                if let error {
-                    self.deleteErrorMessage = "Could not move \"\(app.name)\" to the Trash: \(error.localizedDescription)"
-                    return
+                self.isDeletingApp = false
+                switch result {
+                case .success:
+                    self.settings.recentAppPaths.removeAll { $0 == appPath }
+                    self.saveSettings()
+                    self.removeAppFromLayout(path: appPath)
+                    IconCache.shared.invalidate(path: appPath)
+                case .cancelled:
+                    break
+                case .failure(let message, let isPerm, let isAuto):
+                    self.deleteErrorInfo = DeleteErrorInfo(
+                        app: app,
+                        message: message,
+                        isPermissionError: isPerm,
+                        isAutomationError: isAuto
+                    )
                 }
-                self.removeAppFromLayout(path: app.path)
-                IconCache.shared.invalidate(path: app.path)
+                self.onDeleteFlowFinished?()
             }
         }
+    }
+
+    func openPrivacySettingsForDelete(isAutomationError: Bool) {
+        let anchor = isAutomationError ? "Privacy_Automation" : "Privacy_AppBundles"
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
+            NSWorkspace.shared.open(url)
+        }
+        deleteErrorInfo = nil
+        onRequestHide?(false)
+    }
+
+    nonisolated private static func moveItemToTrash(path: String, appName: String) -> TrashAttemptResult {
+        let finderResult = moveToTrashViaFinder(path: path)
+        switch finderResult {
+        case .success:
+            return .success
+        case .cancelled:
+            return .cancelled
+        case .failure(let finderMsg, let finderPerm, let finderAuto):
+            // Fallback to NSWorkspace.recycle (may work for user-writable bundles if App Management is allowed)
+            let wsResult = moveToTrashViaWorkspace(url: URL(fileURLWithPath: path))
+            switch wsResult {
+            case .success:
+                return .success
+            case .cancelled:
+                return .cancelled
+            case .failure(let wsMsg, let wsPerm, _):
+                let combinedPerm = finderPerm || wsPerm
+                let message: String
+                if combinedPerm {
+                    message = "macOS blocked deleting “\(appName)” because Ber Launchpad lacks Finder Automation or App Management permission (or administrator auth was denied). You can grant permission in System Settings, or hide this app from Launchpad instead."
+                } else {
+                    let detail = finderMsg.isEmpty ? wsMsg : finderMsg
+                    message = "Could not move “\(appName)” to the Trash: \(detail)"
+                }
+                return .failure(message: message, isPermissionError: combinedPerm, isAutomationError: finderAuto)
+            }
+        }
+    }
+
+    nonisolated private static func moveToTrashViaFinder(path: String) -> TrashAttemptResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = [
+            "-e",
+            "on run argv\nset targetItem to POSIX file (item 1 of argv)\ntell application \"Finder\" to delete targetItem\nend run",
+            path
+        ]
+        let errPipe = Pipe()
+        let outPipe = Pipe()
+        process.standardError = errPipe
+        process.standardOutput = outPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return .failure(message: error.localizedDescription, isPermissionError: false, isAutomationError: false)
+        }
+
+        if process.terminationStatus == 0 {
+            return .success
+        }
+
+        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        let errText = String(data: errData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let lower = errText.lowercased()
+
+        if errText.contains("-128") || lower.contains("user canceled") {
+            return .cancelled
+        }
+
+        let isAutoDenied = errText.contains("-1743") || lower.contains("not authorized")
+        let isPerm = isAutoDenied || errText.contains("-5000") || lower.contains("permission") || lower.contains("privilege")
+        return .failure(message: errText, isPermissionError: isPerm, isAutomationError: isAutoDenied)
+    }
+
+    nonisolated private static func moveToTrashViaWorkspace(url: URL) -> TrashAttemptResult {
+        let semaphore = DispatchSemaphore(value: 0)
+        var capturedError: NSError?
+
+        NSWorkspace.shared.recycle([url]) { _, error in
+            capturedError = error as NSError?
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        guard let error = capturedError else {
+            return .success
+        }
+
+        let isPerm = (error.domain == NSCocoaErrorDomain && (
+            error.code == NSFileWriteNoPermissionError ||
+            error.code == NSFileReadNoPermissionError
+        )) || (error.domain == NSPOSIXErrorDomain && (
+            error.code == EACCES || error.code == EPERM
+        )) || error.localizedDescription.lowercased().contains("permission")
+
+        return .failure(message: error.localizedDescription, isPermissionError: isPerm, isAutomationError: false)
     }
 
     func removeAppFromLayout(path: String) {

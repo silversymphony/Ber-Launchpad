@@ -153,29 +153,38 @@ struct LaunchpadRootView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
                     .zIndex(30)
                 }
+
+                // In-App Delete Error Overlay (avoids spawning external NSAlert sheets)
+                if let errorInfo = store.deleteErrorInfo {
+                    DeleteErrorOverlayView(
+                        errorInfo: errorInfo,
+                        onHideInstead: {
+                            withAnimation(.spring(response: 0.26, dampingFraction: 0.84)) {
+                                store.hideApp(errorInfo.app)
+                                store.deleteErrorInfo = nil
+                            }
+                        },
+                        onOpenPrivacySettings: {
+                            store.openPrivacySettingsForDelete(isAutomationError: errorInfo.isAutomationError)
+                        },
+                        onDismiss: {
+                            store.deleteErrorInfo = nil
+                        }
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                    .zIndex(35)
+                }
             }
             .animation(.easeOut(duration: 0.16), value: store.searchText.isEmpty)
             .animation(.spring(response: 0.25, dampingFraction: 0.86), value: store.isSettingsPresented)
             .animation(.spring(response: 0.22, dampingFraction: 0.86), value: store.appPendingDelete != nil)
+            .animation(.spring(response: 0.22, dampingFraction: 0.86), value: store.deleteErrorInfo != nil)
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusLaunchpadSearch)) { _ in
             isSearchFocused = true
         }
         .onReceive(NotificationCenter.default.publisher(for: .clearLaunchpadFocus)) { _ in
             isSearchFocused = false
-        }
-        .alert(
-            "Unable to Delete Application",
-            isPresented: Binding(
-                get: { store.deleteErrorMessage != nil },
-                set: { if !$0 { store.deleteErrorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {
-                store.deleteErrorMessage = nil
-            }
-        } message: {
-            Text(store.deleteErrorMessage ?? "")
         }
     }
 
@@ -469,6 +478,10 @@ struct LaunchpadRootView: View {
         isSearchFocused = false
         if store.isSettingsPresented {
             store.isSettingsPresented = false
+            return
+        }
+        if store.deleteErrorInfo != nil {
+            store.deleteErrorInfo = nil
             return
         }
         if store.appPendingDelete != nil {

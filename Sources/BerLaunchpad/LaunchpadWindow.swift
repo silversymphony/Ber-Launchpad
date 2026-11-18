@@ -105,6 +105,7 @@ final class LaunchpadWindowController: NSObject, NSWindowDelegate {
         store.isJiggleMode = false
         store.isSettingsPresented = false
         store.appPendingDelete = nil
+        store.deleteErrorInfo = nil
         store.selectedIndex = nil
         store.scrollDragOffset = 0
         store.draggedEntry = nil
@@ -160,6 +161,7 @@ final class LaunchpadWindowController: NSObject, NSWindowDelegate {
                 self?.store.isJiggleMode = false
                 self?.store.isSettingsPresented = false
                 self?.store.appPendingDelete = nil
+                self?.store.deleteErrorInfo = nil
                 self?.store.draggedEntry = nil
                 self?.store.draggedFromFolderID = nil
                 self?.store.dropTargetEntryID = nil
@@ -170,12 +172,22 @@ final class LaunchpadWindowController: NSObject, NSWindowDelegate {
         })
     }
 
+    func reactivateIfVisible() {
+        guard let panel, panel.isVisible else { return }
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
     // MARK: - NSWindowDelegate
 
     func windowDidResignKey(_ notification: Notification) {
         guard isVisible else { return }
-        // Don't hide mid-drag or when just opening
+        // Don't hide mid-drag, while opening, or while delete/permission/settings overlays are active
         guard store.draggedEntry == nil,
+              !store.isDeletingApp,
+              store.appPendingDelete == nil,
+              store.deleteErrorInfo == nil,
+              !store.isSettingsPresented,
               Date().timeIntervalSince(lastShowTimestamp) > 0.35 else {
             return
         }
@@ -239,6 +251,10 @@ final class LaunchpadWindowController: NSObject, NSWindowDelegate {
 
         // Escape key layered dismissal
         if keyCode == kVK_Escape {
+            if store.deleteErrorInfo != nil {
+                store.deleteErrorInfo = nil
+                return nil
+            }
             if store.appPendingDelete != nil {
                 store.appPendingDelete = nil
                 return nil

@@ -63,6 +63,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" << 'EOF'
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Ber Launchpad uses Finder to move deleted applications to the Trash.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSSupportsAutomaticGraphicsSwitching</key>

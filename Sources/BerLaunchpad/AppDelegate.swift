@@ -49,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller?.hide(restorePreviousApp: restorePrevious)
         }
 
+        store.onDeleteFlowFinished = { [weak controller] in
+            controller?.reactivateIfVisible()
+        }
+
         let syncHotKeys: () -> Void = { [weak controller] in
             let s = LaunchpadStore.shared.settings
             HotKeyManager.shared.applySystemHotKeyOverrides(
