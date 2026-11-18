@@ -49,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             controller?.hide(restorePreviousApp: restorePrevious)
         }
 
+        store.onDeleteFlowStarted = { [weak controller] in
+            controller?.suspendLevelForSystemDialog()
+        }
+
         store.onDeleteFlowFinished = { [weak controller] in
             controller?.reactivateIfVisible()
         }

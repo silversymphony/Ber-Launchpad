@@ -366,6 +366,24 @@ enum ScenarioTester {
             try assertTrue(store.settings.hiddenAppPaths.contains(apps[0].path), "App persisted in hiddenAppPaths")
         }
 
+        runTest("Test 14: Sort A-Z button reorders top-level entries & folder contents alphabetically without losing apps") {
+            let dir = tempRoot.appendingPathComponent("t14", isDirectory: true)
+            let store = makeStore(dir: dir, rows: 4, columns: 5) // 20 per page
+            let zebra = AppItem(name: "Zebra", bundleIdentifier: "com.t.z", path: "/Applications/Zebra.app", category: .other, isSystemApp: false)
+            let alpha = AppItem(name: "Alpha", bundleIdentifier: "com.t.a", path: "/Applications/Alpha.app", category: .other, isSystemApp: false)
+            let mango = AppItem(name: "Mango", bundleIdentifier: "com.t.m", path: "/Applications/Mango.app", category: .other, isSystemApp: false)
+            let newer = AppItem(name: "Beta", bundleIdentifier: "com.t.b", path: "/Applications/Beta.app", category: .other, isSystemApp: false)
+            let folder = FolderItem(name: "Creative", apps: [zebra, alpha])
+
+            store.pages = [[.app(mango), .folder(folder)], [.app(newer)]]
+            store.sortAlphabetically()
+
+            try assertEqual(totalAppCount(in: store.pages), 4, "Zero apps lost after sortAlphabetically")
+            try assertEqual(store.pages.count, 1, "Sparse pages repacked cleanly")
+            try assertEqual(store.pages[0].map(\.displayName), ["Beta", "Creative", "Mango"], "Top-level entries sorted A-Z")
+            try assertEqual(store.pages[0][1].asFolder?.apps.map(\.name), ["Alpha", "Zebra"], "Apps inside folder sorted A-Z")
+        }
+
         print("=== Summary: \(passedCount) passed, \(failures.count) failed ===")
         if !failures.isEmpty {
             for msg in failures {

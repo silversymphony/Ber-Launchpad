@@ -9,6 +9,8 @@ final class LaunchpadPanel: NSPanel {
 
 @MainActor
 final class LaunchpadWindowController: NSObject, NSWindowDelegate {
+    private static let overlayWindowLevel = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+
     private let store: LaunchpadStore
     private var panel: LaunchpadPanel?
     private var hostingView: NSHostingView<LaunchpadContainerView>?
@@ -48,7 +50,7 @@ final class LaunchpadWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
 
-        panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        panel.level = Self.overlayWindowLevel
         panel.collectionBehavior = [
             .canJoinAllSpaces,
             .fullScreenAuxiliary,
@@ -118,6 +120,7 @@ final class LaunchpadWindowController: NSObject, NSWindowDelegate {
         store.syncInstalledApps(initialIfNeeded: false)
 
         presentation.scale = 1.05
+        panel.level = Self.overlayWindowLevel
         panel.alphaValue = 0.0
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -154,6 +157,7 @@ final class LaunchpadWindowController: NSObject, NSWindowDelegate {
         }, completionHandler: { [weak self] in
             Task { @MainActor in
                 self?.panel?.orderOut(nil)
+                self?.panel?.level = Self.overlayWindowLevel
                 self?.panel?.alphaValue = 1.0
                 self?.presentation.scale = 1.0
                 self?.store.searchText = ""
@@ -172,8 +176,15 @@ final class LaunchpadWindowController: NSObject, NSWindowDelegate {
         })
     }
 
+    func suspendLevelForSystemDialog() {
+        guard let panel, panel.isVisible else { return }
+        // Lower below all normal/modal/TCC/Touch ID/Finder system prompts so permission dialogs are never covered
+        panel.level = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
+    }
+
     func reactivateIfVisible() {
         guard let panel, panel.isVisible else { return }
+        panel.level = Self.overlayWindowLevel
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

@@ -35,6 +35,7 @@ final class LaunchpadStore: ObservableObject {
     @Published var deleteErrorInfo: DeleteErrorInfo?
 
     var onRequestHide: ((_ restorePreviousApp: Bool) -> Void)?
+    var onDeleteFlowStarted: (() -> Void)?
     var onDeleteFlowFinished: (() -> Void)?
     var onHotkeyChanged: ((UInt32, UInt32) -> Void)?
     var onHotKeySettingsChanged: (() -> Void)?
@@ -350,6 +351,36 @@ final class LaunchpadStore: ObservableObject {
         refreshRecentApps()
         refreshHiddenAppsList(from: rawApps)
         IconCache.shared.preload(paths: apps.map(\.path))
+    }
+
+    func sortAlphabetically() {
+        var allEntries: [GridEntry] = []
+        for page in pages {
+            for entry in page {
+                switch entry {
+                case .app(let app):
+                    allEntries.append(.app(app))
+                case .folder(var folder):
+                    folder.apps.sort {
+                        $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+                    }
+                    if folder.apps.count == 1 {
+                        allEntries.append(.app(folder.apps[0]))
+                    } else if !folder.apps.isEmpty {
+                        allEntries.append(.folder(folder))
+                    }
+                }
+            }
+        }
+
+        allEntries.sort {
+            $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+
+        pages = paginate(entries: allEntries, itemsPerPage: settings.itemsPerPage)
+        clampCurrentPage()
+        selectedIndex = nil
+        saveLayout()
     }
 
     private func paginate(entries: [GridEntry], itemsPerPage: Int) -> [[GridEntry]] {
@@ -805,6 +836,7 @@ final class LaunchpadStore: ObservableObject {
         appPendingDelete = nil
         deleteErrorInfo = nil
         isDeletingApp = true
+        onDeleteFlowStarted?()
 
         let appPath = app.path
         let appName = app.name

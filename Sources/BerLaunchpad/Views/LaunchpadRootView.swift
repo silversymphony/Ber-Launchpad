@@ -219,24 +219,50 @@ struct LaunchpadRootView: View {
 
                 Spacer()
 
-                Button {
-                    isSearchFocused = false
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                        store.isSettingsPresented.toggle()
-                    }
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.white.opacity(0.75))
-                        .frame(width: 30, height: 30)
+                HStack(spacing: 10) {
+                    Button {
+                        isSearchFocused = false
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+                            store.sortAlphabetically()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.arrow.down")
+                                .font(.system(size: 11.5, weight: .semibold))
+                            Text("A–Z")
+                                .font(.system(size: 11.5, weight: .semibold))
+                        }
+                        .foregroundColor(.white.opacity(0.85))
+                        .padding(.horizontal, 10)
+                        .frame(height: 30)
                         .background(
-                            Circle()
+                            Capsule()
                                 .fill(Color.white.opacity(0.12))
-                                .overlay(Circle().stroke(Color.white.opacity(0.22), lineWidth: 0.8))
+                                .overlay(Capsule().stroke(Color.white.opacity(0.22), lineWidth: 0.8))
                         )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Sort Apps A–Z")
+
+                    Button {
+                        isSearchFocused = false
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                            store.isSettingsPresented.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.white.opacity(0.75))
+                            .frame(width: 30, height: 30)
+                            .background(
+                                Circle()
+                                    .fill(Color.white.opacity(0.12))
+                                    .overlay(Circle().stroke(Color.white.opacity(0.22), lineWidth: 0.8))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Settings (⌘,)")
                 }
-                .buttonStyle(.plain)
-                .help("Settings (⌘,)")
             }
             .padding(.horizontal, max(28, screenWidth * 0.04))
         }
